@@ -76,6 +76,9 @@ spawn_reload = 1
 hp = 100
 score = 0
 paused = False
+fire_mode = 0
+fire_what = False
+game_overed = False
 
 def spawn_meteor():
     global meteors, meteors_types, spawn_reload
@@ -113,10 +116,19 @@ paused_text = """
 ██║     ██║  ██║╚██████╔╝███████║███████╗██████╔╝
 ╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚══════╝╚═════╝ 
 """.split("\n")
+gameover_text = """
+ ██████╗  █████╗ ███╗   ███╗███████╗     ██████╗ ██╗   ██╗███████╗██████╗ ██╗
+██╔════╝ ██╔══██╗████╗ ████║██╔════╝    ██╔═══██╗██║   ██║██╔════╝██╔══██╗██║
+██║  ███╗███████║██╔████╔██║█████╗      ██║   ██║██║   ██║█████╗  ██████╔╝██║
+██║   ██║██╔══██║██║╚██╔╝██║██╔══╝      ██║   ██║╚██╗ ██╔╝██╔══╝  ██╔══██╗╚═╝
+╚██████╔╝██║  ██║██║ ╚═╝ ██║███████╗    ╚██████╔╝ ╚████╔╝ ███████╗██║  ██║██╗
+ ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝     ╚═════╝   ╚═══╝  ╚══════╝╚═╝  ╚═╝╚═╝
+""".split("\n")
 
 
 def pause():
-    global paused
+    global paused, game_overed
+    if game_overed: return
     paused = not paused
     if paused:
         i = 0
@@ -125,11 +137,28 @@ def pause():
             i = i + 1
         screen.refresh()
 
+def game_over():
+    global paused, game_overed
+    paused = game_overed = True
+
+    i = 0
+    for line in gameover_text:
+        prt(11+i, 17, line)
+        i = i + 1
+    screen.refresh()
+
 keyboard.on_press_key("space", lambda pause1: pause())
 keyboard.on_press_key("enter", lambda pause2: pause())
 
+def firemode():
+    global fire_mode
+    fire_mode = (fire_mode + 1) % 4
+
+keyboard.on_press_key("s", lambda firemode1: firemode())
+keyboard.on_press_key("down", lambda firemode2: firemode())
+
 while True:
-    if paused:
+    if paused or game_overed:
         curses.napms(100)
         continue
 
@@ -147,10 +176,27 @@ while True:
     if pressed("d") or pressed("right"):
         pos = pos + 0.4
     pos = min(max(pos, 0), 43)
-    if reload == 0 and (pressed("w") or pressed("up")):
+    if reload == 0 and (pressed("w") or pressed("up")) and ((fire_mode==2 and score >= 1.1) or (fire_mode==3 and score >= 2.5) or fire_mode < 2):
         reload = 10
-        projectiles.append([posY+6, int(pos)+3, 1])
-        projectiles.append([posY+6, int(pos)+4, 1])
+        if fire_mode == 1:
+            fire_what = not fire_what
+            projectiles.append([posY+6, int(pos)+(3 if fire_what else 4), 1, 1])
+            reload = 5
+        elif fire_mode == 2:
+            projectiles.append([posY+6, int(pos)+3, 40, 1.5])
+            projectiles.append([posY+5, int(pos)+3, 40, 1.5])
+            projectiles.append([posY+6, int(pos)+4, 40, 1.5])
+            projectiles.append([posY+5, int(pos)+4, 40, 1.5])
+            score = score - 1.1
+        elif fire_mode == 3:
+            for i in range(5, 30):
+                projectiles.append([posY+i, int(pos)+3, 40, 10])
+                projectiles.append([posY+i, int(pos)+4, 40, 10])
+            score = score - 2.5
+            reload = 60
+        else:
+            projectiles.append([posY+6, int(pos)+3, 1, 1])
+            projectiles.append([posY+6, int(pos)+4, 1, 1])
 
     for i in range(len(stars)):
         y, x = stars[i]
@@ -178,8 +224,8 @@ while True:
 
     i = 0
     while i < len(projectiles):
-        y, x, l = projectiles[i]
-        y = y + 0.5
+        y, x, l, s = projectiles[i]
+        y = y + 0.5 * s
         meteorsInt = [[int(m[0]), m[1]] for m in meteors]
         p1 = [int(y), x]
         p1 = meteorsInt.index(p1) if p1 in meteorsInt else -1
@@ -190,7 +236,7 @@ while True:
         if l == 0 or y >= 30:
             projectiles.remove(projectiles[i])
             continue
-        projectiles[i] = [y, x, l]
+        projectiles[i] = [y, x, l, s]
         prt(int(y), x, "|")
         i = i + 1
 
@@ -208,13 +254,21 @@ while True:
     prt(posY+5, posI+2,      "(  )")
     prt(posY+6, posI+3,    "\\/")
 
+    if hp < 0:
+        hp = 0
 
     score = score + 0.002
 
-    prt(2, 55, "HP:         "+(" " if hp < 100 else "")+(" " if hp < 10 else "")+str(hp))
-    prt(4, 55, "SCORE:  " + (" " if score < 10000 else "") + (" " if score < 1000 else "") + (" " if score < 100 else "") + (" " if score < 10 else "") + f"{int(score)}.{int(score*10) % 10}")
+    prt(1, 60, "STATS:")
+    prt(3, 55, "HP:         "+(" " if hp < 100 else "")+(" " if hp < 10 else "")+str(hp))
+    prt(5, 55, "SCORE:  " + (" " if score < 10000 else "") + (" " if score < 1000 else "") + (" " if score < 100 else "") + (" " if score < 10 else "") + f"{int(score)}.{int(score*10) % 10}")
 
-    prt(21, 58, "CONTROLS:")
+    prt(7, 55,  f"FR-MD:   {["DOUBLE", "  FAST", " POWER", " LASER"][fire_mode]}")
+    if fire_mode > 1:
+        prt(8, 57,  f"*REQ SCORE*")
+
+    prt(19, 58, "CONTROLS:")
+    prt(21, 55, "S, ↓      FR-MD")
     prt(23, 55, "A, ←       LEFT")
     prt(24, 55, "D, →      RIGHT")
     prt(25, 55, "W, ↑      SHOOT")
@@ -228,3 +282,6 @@ while True:
 
 
     screen.refresh()
+
+    if hp == 0:
+        game_over()

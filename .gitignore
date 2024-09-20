@@ -1,2 +1,5 @@
 .idea/
 start.bat
+build/
+dist/
+*.spec
